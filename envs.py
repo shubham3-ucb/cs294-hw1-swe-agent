@@ -1,5 +1,6 @@
 from utils import get_sb_environment
 import subprocess
+import base64
 
 class LimitsExceeded(Exception):
     """Raised when the agent has reached its step limit."""
@@ -55,13 +56,46 @@ class SWEEnvironment:
         """
         [Optional] Replace the content of the file from the given line to the given line with the given content
         """
-        raise NotImplementedError("replace_in_file must be implemented by the student")
+        if from_line < 1 or to_line < from_line:
+            raise ValueError("Invalid line range")
+        b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")
+        # Use an inline Python script inside the target environment to avoid sed/awk edge cases
+        cmd = f"""
+python - << 'PY'
+import base64
+import io
+import sys
+
+p = {file_path!r}
+start = {from_line} - 1  # 0-based inclusive
+end = {to_line}          # 0-based exclusive
+replacement = base64.b64decode({b64!r}).decode('utf-8').splitlines(True)
+
+with open(p, 'r', encoding='utf-8', errors='ignore') as f:
+    lines = f.readlines()
+
+if start > len(lines):
+    # If start beyond EOF, just append replacement at EOF
+    start = len(lines)
+if end > len(lines):
+    end = len(lines)
+
+new_lines = lines[:start] + replacement + lines[end:]
+with open(p, 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+
+print(f"Replaced lines {start+1}-{end} in {p}")
+PY
+"""
+        return self.env.execute(cmd)
     
     def show_file(self, file_path: str) -> str:
         """
         [Optional]Show the content of the file
         """
-        raise NotImplementedError("show_file must be implemented by the student")
+        # Prefer cat -n for portability
+        cmd = f"cat -n {file_path}"
+        return self.env.execute(cmd)
 
 class DumbEnvironment:
     """
