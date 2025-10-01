@@ -47,11 +47,14 @@ def process_instance(
         env = SWEEnvironment(instance)
         # Initialize the agent
         agent = ReactAgent("swe-agent", parser, llm)
+        # Register tools BEFORE running
+        agent.add_functions([
+            agent.add_instructions_and_backtrack,
+            env.run_bash_cmd,
+            # Optionally add more tools later (replace_in_file, show_file) once implemented
+        ])
         # Run the agent
-        output = agent.run(task, max_steps) 
-        
-        # TODO(student): Add more functions here
-        # agent.add_functions([env.run_bash_cmd, env.replace_in_file, env.show_file, ...])
+        output = agent.run(task, max_steps)
         
         # Generate patch for SWE-Bench
         result = env.generate_patch(output)

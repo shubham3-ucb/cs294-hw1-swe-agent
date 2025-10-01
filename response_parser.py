@@ -28,16 +28,58 @@ arg2_value (can be multiline)
 
     def parse(self, text: str) -> dict:
         """
-        Parse the function call from `text` using string.rfind to avoid confusion with
-        earlier delimiter-like content in the reasoning.
+        Parse and extract the final function call embedded in `text`.
 
-        Returns a dictionary: {"thought": str, "name": str, "arguments": dict}
+        The parser is resilient to delimiter-like content that may appear earlier in
+        the reasoning by locating the last occurrence of the END marker and then the
+        corresponding BEGIN marker using rfind.
+
+        Returns a dictionary with keys:
+        - "thought": str, free-form reasoning text preceding the function call
+        - "name": str, the function name
+        - "arguments": dict[str, str], argument name to (possibly multiline) value
+
+        Raises ValueError if the text is malformed or delimiters are missing.
         """
-        # TODO(student): Implement rfind-based parsing per the assignment description.
-        # Hints:
-        # - Find END_CALL via rfind; then find the matching BEGIN_CALL before it via rfind
-        # - Everything before BEGIN_CALL is the model's thought
-        # - Between BEGIN_CALL and END_CALL: first block is function name, subsequent blocks
-        #   are argument name/value pairs separated by ARG_SEP, values may be multiline
-        # - Raise ValueError on malformed inputs
-        raise NotImplementedError("ResponseParser.parse must be implemented by the student")
+        if not isinstance(text, str):
+            raise ValueError("Input must be a string")
+
+        end_idx = text.rfind(self.END_CALL)
+        if end_idx == -1:
+            raise ValueError("Missing END_FUNCTION_CALL delimiter")
+
+        begin_idx = text.rfind(self.BEGIN_CALL, 0, end_idx)
+        if begin_idx == -1:
+            raise ValueError("Missing BEGIN_FUNCTION_CALL delimiter")
+
+        thought = text[:begin_idx].strip()
+        inner = text[begin_idx + len(self.BEGIN_CALL): end_idx]
+
+        # Split by ARG separator; the first block is the function name
+        parts = inner.split(self.ARG_SEP)
+        if not parts:
+            raise ValueError("Malformed function call: empty body")
+
+        func_name = parts[0].strip()
+        if not func_name:
+            raise ValueError("Malformed function call: missing function name")
+
+        arguments: dict[str, str] = {}
+        for block in parts[1:]:
+            # Normalize spacing but preserve value newlines
+            segment = block.lstrip("\n")
+            if not segment.strip():
+                # Allow empty blocks (robustness), skip
+                continue
+            newline_idx = segment.find("\n")
+            if newline_idx == -1:
+                raise ValueError("Malformed argument block: expected name and value")
+            arg_name = segment[:newline_idx].strip()
+            arg_value = segment[newline_idx + 1:]
+            # Trim only surrounding newlines and spaces at ends; preserve internal formatting
+            arg_value = arg_value.strip()
+            if not arg_name:
+                raise ValueError("Malformed argument block: missing argument name")
+            arguments[arg_name] = arg_value
+
+        return {"thought": thought, "name": func_name, "arguments": arguments}

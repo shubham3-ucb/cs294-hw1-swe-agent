@@ -16,6 +16,7 @@ from typing import List, Callable, Dict, Any
 from response_parser import ResponseParser
 from llm import LLM, OpenAIModel
 import inspect
+import time
 
 class ReactAgent:
     """
@@ -30,6 +31,7 @@ class ReactAgent:
         self.name: str = name
         self.parser = parser
         self.llm = llm
+        self.timestamp: int = int(time.time())
 
         # Message tree storage
         self.id_to_message: List[Dict[str, Any]] = []
@@ -56,20 +58,90 @@ class ReactAgent:
         The message must include fields: role, content, timestamp, unique_id, parent, children.
         Maintain a pointer to the current node and the root node.
         """
-        # TODO(student): Implement message tree creation and linking.
-        raise NotImplementedError("add_message must be implemented by the student")
+        # Determine the new message id (0-based index for list addressing)
+        new_message_id: int = len(self.id_to_message)
+
+        # The parent is the current node, unless this is the first (root) message
+        parent_id: int | None = self.current_message_id if self.current_message_id != -1 else None
+
+        message: Dict[str, Any] = {
+            "role": role,
+            "content": content,
+            "timestamp": int(time.time()),
+            "unique_id": new_message_id,
+            "parent": parent_id,
+            "children": [],
+        }
+
+        # Append to storage
+        self.id_to_message.append(message)
+
+        # Link from parent to child if applicable
+        if parent_id is not None:
+            self.id_to_message[parent_id]["children"].append(new_message_id)
+        else:
+            # First message becomes the root
+            self.root_message_id = new_message_id
+
+        # Move the current pointer to the newly created message
+        self.current_message_id = new_message_id
+        return new_message_id
 
     def set_message_content(self, message_id: int, content: str) -> None:
         """Update message content by id."""
-        # TODO(student): Implement message content update.
-        raise NotImplementedError("set_message_content must be implemented by the student")
+        if message_id < 0 or message_id >= len(self.id_to_message):
+            raise IndexError("message_id out of range")
+        self.id_to_message[message_id]["content"] = content
 
     def get_context(self) -> str:
         """
         Build the full LLM context by walking from the root to the current message.
         """
-        # TODO(student): Implement context construction.
-        raise NotImplementedError("get_context must be implemented by the student")
+        if self.current_message_id == -1:
+            return ""
+
+        # Walk ancestors from current to root via parent pointers
+        path_ids: List[int] = []
+        cursor = self.current_message_id
+        while cursor is not None and cursor != -1:
+            path_ids.append(cursor)
+            parent = self.id_to_message[cursor]["parent"]
+            cursor = parent if parent is not None else -1
+
+        # Reverse to get root → ... → current ordering
+        path_ids.reverse()
+
+        # Concatenate formatted messages
+        context_parts: List[str] = []
+        for mid in path_ids:
+            context_parts.append(self.message_id_to_context(mid))
+        return "".join(context_parts)
+
+    # -------------------- HELPER APIS --------------------
+    def set_user_prompt(self, user_prompt: str) -> None:
+        """Set the user prompt content on the pre-created user node."""
+        self.set_message_content(self.user_message_id, user_prompt)
+
+    def get_instructions(self) -> str:
+        """Return the current content of the instruction node."""
+        return self.id_to_message[self.instructions_message_id]["content"]
+
+    def set_instructions(self, instructions: str) -> None:
+        """Set the instruction node content."""
+        self.set_message_content(self.instructions_message_id, instructions)
+
+    def save_history(self, file_name: str) -> None:
+        """Serialize core agent state to a YAML file for inspection/reproducibility."""
+        import yaml
+        data = {
+            "name": self.name,
+            "timestamp": self.timestamp,
+            "root_message_id": self.root_message_id,
+            "current_message_id": self.current_message_id,
+            "messages": self.id_to_message,
+        }
+        with open(file_name, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, sort_keys=False)
 
     # -------------------- REQUIRED TOOLS --------------------
     def add_functions(self, tools: List[Callable]):
@@ -80,8 +152,12 @@ class ReactAgent:
         - The signature of each tool
         - The docstring of each tool
         """
-        # TODO(student): Register tools and construct tool descriptions for the system prompt.
-        raise NotImplementedError("add_functions must be implemented by the student")
+        for tool in tools:
+            if not callable(tool):
+                raise TypeError("All tools must be callable")
+            self.function_map[tool.__name__] = tool
+        # Nothing else to do here; the system prompt text is dynamically rendered
+        # in message_id_to_context using self.function_map and ResponseParser.response_format.
     
     def finish(self, result: str):
         """The agent must call this function with the final result when it has solved the given task. The function calls "git add -A and git diff --cached" to generate a patch and returns the patch as submission.
@@ -104,8 +180,17 @@ class ReactAgent:
 
         Returns a short success string.
         """
-        # TODO(student): Implement instruction update and backtracking logic.
-        raise NotImplementedError("add_instructions_and_backtrack must be implemented by the student")
+        # Validate message id
+        if at_message_id < 0 or at_message_id >= len(self.id_to_message):
+            raise IndexError("at_message_id out of range")
+
+        # Update the instruction node content
+        self.set_message_content(self.instructions_message_id, instructions)
+
+        # Move the current pointer to the target node (backtrack)
+        self.current_message_id = at_message_id
+
+        return f"Updated instructions and backtracked to message {at_message_id}."
 
     # -------------------- MAIN LOOP --------------------
     def run(self, task: str, max_steps: int) -> str:
@@ -120,8 +205,56 @@ class ReactAgent:
             - Append tool result to the tree
             - If `finish` is called, return the final result
         """
-        # TODO(student): Implement the Reason-Act loop per the assignment, including error handling.
-        raise NotImplementedError("run must be implemented by the student")
+        # Respect assignment cap
+        step_limit = min(int(max_steps), 100)
+
+        # Set the task on the user node
+        self.set_user_prompt(task)
+        # Ensure current pointer is at the instruction node for initial context
+        self.current_message_id = self.instructions_message_id
+
+        for _ in range(step_limit):
+            # Build context and query LLM
+            prompt = self.get_context()
+            model_output = self.llm.generate(prompt)
+            # Store assistant's raw output
+            assistant_id = self.add_message("assistant", model_output)
+
+            # Parse final function call
+            parsed = self.parser.parse(model_output)
+            fn_name: str = parsed["name"]
+            fn_args: Dict[str, Any] = parsed.get("arguments", {})
+
+            if fn_name not in self.function_map:
+                # Record the error and continue
+                self.add_message("tool", f"Error: unknown function '{fn_name}'")
+                continue
+
+            tool_fn = self.function_map[fn_name]
+
+            # Call with best-effort kwargs matching the function signature
+            try:
+                sig = inspect.signature(tool_fn)
+                accepted = {
+                    name: fn_args[name]
+                    for name in sig.parameters.keys()
+                    if name in fn_args
+                }
+                result = tool_fn(**accepted)
+            except Exception as e:
+                # Attach error message and continue
+                self.add_message("tool", f"Error executing {fn_name}: {e}")
+                continue
+
+            # Append tool result
+            self.add_message("tool", str(result))
+
+            # If finish, return final result string
+            if tool_fn is self.finish or fn_name == "finish":
+                return str(result)
+
+        # Step limit reached
+        raise RuntimeError("Step limit reached without calling finish")
 
     def message_id_to_context(self, message_id: int) -> str:
         """

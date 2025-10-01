@@ -1,4 +1,9 @@
 from abc import ABC, abstractmethod
+import os
+from typing import Optional
+
+from dotenv import load_dotenv
+from openai import OpenAI
 
 
 class LLM(ABC):
@@ -14,21 +19,35 @@ class LLM(ABC):
 
 
 class OpenAIModel(LLM):
-    """
-    Example LLM implementation using OpenAI's Responses API.
+    """Minimal OpenAI-backed LLM wrapper.
 
-    TODO(student): Implement this class to call your chosen backend (e.g., OpenAI GPT-5 mini)
-    and return the model's text output. You should ensure the model produces the response
-    format required by ResponseParser and include the stop token in the output string.
+    Reads the API key from the environment (OPENAI_API_KEY). A project-level .env file
+    can be used for local development.
+
+    The model is expected to emit the function-call text that the ResponseParser
+    can parse, including the end stop token.
     """
 
     def __init__(self, stop_token: str, model_name: str = "gpt-5-mini"):
-        # TODO(student): Initialize your OpenAI client or chosen LLM provider here.
+        load_dotenv()  # best-effort: load from a project .env if present
+        if not os.getenv("OPENAI_API_KEY"):
+            raise ValueError(
+                "OPENAI_API_KEY not found. Set it in environment or a .env file at project root."
+            )
+        self.client = OpenAI()
         self.stop_token = stop_token
         self.model_name = model_name
-        raise NotImplementedError("OpenAIModel.__init__ must be implemented by the student")
 
     def generate(self, prompt: str) -> str:
-        # TODO(student): Call the model, obtain text, and ensure the stop token is present.
-        # Return the raw text including the terminal stop token required by the parser.
-        raise NotImplementedError("OpenAIModel.generate must be implemented by the student")
+        """Call the OpenAI Chat Completions API and return the text.
+
+        The agent and prompts must instruct the model to output a single function call
+        ending with the required stop token, which the parser depends on.
+        """
+        resp = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+        )
+        text: Optional[str] = resp.choices[0].message.content if resp.choices else ""
+        return text or ""
