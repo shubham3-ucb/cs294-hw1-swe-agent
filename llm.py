@@ -39,15 +39,27 @@ class OpenAIModel(LLM):
         self.model_name = model_name
 
     def generate(self, prompt: str) -> str:
-        """Call the OpenAI Chat Completions API and return the text.
+        """Call the OpenAI Responses API (medium reasoning) and return plain text.
 
-        The agent and prompts must instruct the model to output a single function call
-        ending with the required stop token, which the parser depends on.
+        The agent's system prompt instructs the model to output a single textual
+        function call ending with the required stop token for the parser.
         """
-        resp = self.client.chat.completions.create(
+        resp = self.client.responses.create(
             model=self.model_name,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
+            input=prompt,
+            reasoning={"effort": "medium"},
         )
-        text: Optional[str] = resp.choices[0].message.content if resp.choices else ""
-        return text or ""
+
+        # Robust extraction of text across SDK versions
+        try:
+            if getattr(resp, "output_text", None):
+                return resp.output_text  # type: ignore[attr-defined]
+            parts: list[str] = []
+            for item in getattr(resp, "output", []) or []:
+                for c in getattr(item, "content", []) or []:
+                    txt = getattr(c, "text", None)
+                    if txt:
+                        parts.append(txt)
+            return "\n".join(p for p in parts if p) or ""
+        except Exception:
+            return ""
