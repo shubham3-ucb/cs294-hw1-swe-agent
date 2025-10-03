@@ -1,89 +1,94 @@
-# CS294 HW1 - ReAct Agent for Software Engineering
+## CS 294-264 HW1 — ReAct SWE Agent (Submission README)
 
-This project implements a ReAct (Reasoning and Acting) agent for software engineering tasks using large language models. The codebase is adapted from [mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent/tree/main). 
+### Contents
+- Core agent: `cs294-264-hw-FA25/agent.py` (message tree, backtracking, tools, run loop)
+- Response parser with doctests: `cs294-264-hw-FA25/response_parser.py`
+- LLM wrapper (OpenAI Responses API): `cs294-264-hw-FA25/llm.py`
+- Env tools: `cs294-264-hw-FA25/envs.py`
+- Runner/CLI: `cs294-264-hw-FA25/run_agent.py`
+- Results: `results_baseline`, `results_final_iter_2`, `results_final_iter_3`, `results_iter_next`
 
-## Installation
+### Prereqs (brief)
+- Docker Desktop running (`docker --version`, `docker run --rm hello-world`)
+- Python 3.11 (Conda recommended)
+- OpenAI key available to the process (`OPENAI_API_KEY`)
 
-1. **Install dependencies**
-   ```bash
-   uv pip install -r requirements.txt
-   ```
-
-2. **Set up environment variables:**
-   Create a `.env` file in the project root and add your OpenAI API key:
-   ```
-   OPENAI_API_KEY=your_api_key_here
-   ```
-
-
-## Implement the ReAct Agent
-We provide a skeleton code for you to implement your ReAct agent. Refer to [CODE.md](./CODE.md) for more details about the structure of the code and what you should implement. 
-
-
-## Running the Code
-
-To run the ReAct agent on SWE-bench instances:
+### Quick setup
 ```bash
-python run_agent.py --model gpt-5-mini --max-steps 100 --outputs results
+conda create -y -n cs294-hw1 python=3.11
+conda activate cs294-hw1
+python -m pip install -U uv || true
+uv pip install -r cs294-264-hw-FA25/requirements.txt || \
+  python -m pip install -r cs294-264-hw-FA25/requirements.txt
+# export OPENAI_API_KEY=... (or mini-swe-agent .env)
 ```
 
-The agent will process SWE-bench instances and save results to the `results/` directory.
-
-**Note**: We suggest testing the agent on a single instance first by setting `instances = instances[:1]` in run_agent.py.
-
-
-## Evaluation
-### Running SWEBench's Evaluation Harness
-
-After generating predictions, run SWEBench's evaluation harness to evaluate the submissions:
-
+### Baseline run (no backtracking/tools/custom instructor; step cap 100)
+```bash
+python cs294-264-hw-FA25/run_agent.py \
+  --subset cs294 --split test \
+  -o results_baseline \
+  --model gpt-5-mini \
+  --max-steps 100 \
+  --no-backtrack \
+  --no-optional-tools \
+  --no-debug
+```
+Evaluate baseline predictions:
 ```bash
 python -m swebench.harness.run_evaluation \
-    --dataset_name lynnliu030/swebench-eval-subset \
-    --predictions_path ./results/preds.json \
-    --max_workers 8 \
-    --run_id my_evaluation_run
+  --dataset_name lynnliu030/swebench-eval-subset \
+  --predictions_path ./results_baseline/preds.json \
+  --max_workers 8 \
+  --run_id baseline
 ```
+Outputs:
+- Predictions: `results_baseline/preds.json`
+- Report: `gpt-5-mini.baseline.json`
 
-## 📋 Evaluation Results Format
-
-The evaluation will generate a results file with the following structure:
-
-```json
-{
-    "total_instances": 20,
-    "submitted_instances": 20,
-    "completed_instances": 19,
-    "resolved_instances": 9,
-    "unresolved_instances": 10,
-    "empty_patch_instances": 1,
-    "error_instances": 0,
-    "completed_ids": ["astropy__astropy-7166", ...],
-    "resolved_ids": ["astropy__astropy-7166", ...],
-    "unresolved_ids": ["django__django-10973", ...],
-    "schema_version": 2
-}
+### Improved run (with backtracking, optional tools, optimized instructor)
+```bash
+python cs294-264-hw-FA25/run_agent.py \
+  --subset cs294 --split test \
+  -o results_final_iter_2 \
+  --model gpt-5-mini \
+  --max-steps 100 \
+  --backtrack \
+  --optional-tools \
+  --guard-empty-diff \
+  --debug \
+  --use-default-instructor
 ```
+Evaluate improved predictions (adjust path per run):
+```bash
+python -m swebench.harness.run_evaluation \
+  --dataset_name lynnliu030/swebench-eval-subset \
+  --predictions_path ./results_final_iter_2/preds.json \
+  --max_workers 8 \
+  --run_id final_iter_2
+```
+Outputs:
+- Predictions: `<run_dir>/preds.json`
+- Report: `gpt-5-mini.<run_id>.json`
 
-## 📤 Submission
+### Notes on flags
+- `--backtrack`: enables `add_instructions_and_backtrack`.
+- `--optional-tools`: registers extra env tools (edit helpers, grep, tests, syntax).
+- `--guard-empty-diff`: require a non-empty staged `git diff` before `finish`.
+- `--use-default-instructor`: optimized instructor prompt from `run_agent.py`.
+- `--max-steps 100`: assignment step cap.
 
-After optimizing your agent, submit the following to the [submission server](http://vassar.millennium.berkeley.edu:8080/):
+### Repro summary
+- Model: `gpt-5-mini` via Responses API
+- Dataset: `lynnliu030/swebench-eval-subset`
+- Agent loop + tools per files above
+- Result dirs: `results_baseline`, `results_final_iter_2`, `results_final_iter_3`, `results_iter_next`
 
-### 1. Code Artifact (ZIP)
-- Must contain everything needed to build and run an end-to-end evaluation
-- Do not commit secrets/keys
-- Include setup instructions in README
-- Ensure reproducible environment setup
+### Packaging
+- Submit code, `preds.json` and trajectory folders, and reports `gpt-5-mini.*.json`.
+- Include a short PDF write-up; zip per assignment instructions.
 
-### 2. Report (PDF)
-Your report should:
-- Report your accuracy number
-- Describe the custom tools you created and explain the reason behind making them
-- Share the lessons you learned
-
-### 3. Final Evaluation Results (JSON)
-The evaluation result file with the format shown above, containing your agent's performance metrics on the SWE-Bench subset.
-
----
-
-*Good luck optimizing your SWE agent!* 🤖
+### Troubleshooting
+- Empty/invalid patches: use `--guard-empty-diff` on improved runs.
+- Syntax errors after edits: use `syntax_check` tool (with `--optional-tools`).
+- Docker not found: install Docker Desktop and restart shell.
