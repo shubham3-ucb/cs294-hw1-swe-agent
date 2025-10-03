@@ -1,0 +1,125 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\setlist{nosep,leftmargin=*,itemsep=2pt}
+\lstdefinestyle{code}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{gray!6},
+  frame=single,
+  rulecolor=\color{gray!50},
+  framerule=0.4pt,
+  xleftmargin=0pt,
+  xrightmargin=0pt,
+  columns=fullflexible,
+  breaklines=true,
+  tabsize=2,
+}
+\title{CS 294-264 HW1: ReAct SWE Agent — Baseline and Improvements}
+\author{Shubham Agarwal}
+\date{\today}
+\begin{document}
+\maketitle
+
+\section*{Overview}
+A minimal ReAct SWE agent for SWE-Bench that alternates reasoning and tool calls. It maintains a message tree, parses a single textual function call per step, and interacts with a sandbox via tools.
+
+\section*{Method (Minimal Agent)}
+\begin{enumerate}
+    \item \textbf{Message Tree:} role, content, timestamp, unique id, parent, children; context is the root\,$\to$\,current path.
+    \item \textbf{Parsing:} strict textual protocol; final function call extracted with \texttt{rfind} to ignore earlier delimiter-like text.
+    \item \textbf{Run Loop:} up to 100 steps: build context, call LLM, parse call, execute tool, append output; return on \texttt{finish}.
+    \item \textbf{LLM:} OpenAI Responses API (gpt-5-mini, medium reasoning); system prompt lists tools + response format.
+\end{enumerate}
+
+\section*{Results Summary}
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+Run & Resolved & Errors & Empty Patches & Completed \\
+\midrule
+Baseline & 4/20 & 11 & 2 & 7/20 \\
+Improved & 9/20 & 1 & 2 & 17/20 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Reports: baseline (\texttt{gpt-5-mini.baseline.json}), improved (\texttt{gpt-5-mini.final\_improved.json}).
+
+\section*{Baseline}
+\textbf{Configuration.} No backtracking, no optional tools, no optimized instructor, no empty-diff guard. Tools: \texttt{run\_bash\_cmd}, \texttt{finish}.
+
+\noindent \textbf{Command.}
+\begin{lstlisting}[style=code,language=bash]
+python cs294-264-hw-FA25/run_agent.py --subset cs294 --split test \
+  -o results_baseline --model gpt-5-mini --max-steps 100 \
+  --no-backtrack --no-optional-tools --no-debug
+\end{lstlisting}
+
+\section*{Improved Approach}
+\emph{Goal:} follow a simple, repeatable process (guided by the prompt and tools) to make small, correct changes that pass tests and produce a valid patch.
+
+\subsection*{Step-by-Step Procedure (actions and tools)}
+\begin{enumerate}
+  \item \textbf{Localize (Action)}: run tests/logs to find the top failing file/lines; confirm with \textbf{Tool}: \texttt{grep\_repo(pattern)}.
+  \item \textbf{Inspect (Tool)}: \texttt{show\_file\_range(file, from, to)} to view only the relevant lines.
+  \item \textbf{Edit (Tool)}: \texttt{replace\_in\_file(file, from, to, content)} for a minimal in-place change (normalizes newlines/tabs; re-indents to the surrounding scope).
+  \item \textbf{Syntax check (Tool)}: \texttt{syntax\_check()} to catch formatting/indentation issues quickly.
+  \item \textbf{Retest (Tool)}: \texttt{run\_common\_tests()}; iterate on the next top failure if needed.
+  \item \textbf{Confirm patch (Action + Tool)}: \texttt{git add -A}; then \textbf{Tool}: \texttt{stage\_and\_diff()} must show a non-empty, relevant diff.
+  \item \textbf{Finish (Tool)}: \texttt{finish(result)} with a concise summary.
+\end{enumerate}
+
+\subsection*{Prompt + Guard}
+\textbf{Prompt:} exactly one function-call per step; explicit arg names; forbid new files; preserve indentation; stay scoped to the traceback region. In improved runs we enable the built-in default instructor via \texttt{--use-default-instructor}; baseline leaves the instructor blank.\newline
+\textbf{Backtracking tool:} \texttt{add\_instructions\_and\_backtrack(instructions, at\_message\_id)} is registered only with \texttt{--backtrack}; it updates the instructor node and resets the current pointer to the specified message.\newline
+\textbf{Guard:} block \texttt{finish} when no staged diff is present to eliminate empty/garbage patches; in our runs, patch-apply error count dropped from 11 to 1.
+
+\subsection*{Changes and Rationale (cause \(\to\) fix \(\to\) effect)}
+\begin{itemize}
+  \item No patch \(\to\) \texttt{stage\_and\_diff}+guard \(\to\) patch-apply errors 11\,$\to$\,1.
+  \item Syntax/indent issues \(\to\) scoped \texttt{replace\_in\_file}+\texttt{syntax\_check} \(\to\) clean compiles before tests.
+  \item Unfocused edits \(\to\) traceback-first + \texttt{show\_file\_range}+prompt \(\to\) localized, reviewable diffs.
+  \item Drift \(\to\) \texttt{add\_instructions\_and\_backtrack} \(\to\) fast course-correct on a clean branch.
+\end{itemize}
+
+\subsection*{Improved Test Cases}
+\begin{itemize}
+  \item \textbf{scikit-learn\_26323:} added a localized call to \texttt{\_safe\_set\_output} for the \emph{remainder} estimator inside \texttt{ColumnTransformer.set\_output}; confirmed via \texttt{stage\_and\_diff}.
+  \item \textbf{sympy\_24213:} allowed addition of dimensionally equivalent terms and canonicalized the resulting dimension in \texttt{unitsystem}; edit compiled cleanly.
+\end{itemize}
+
+\noindent \textbf{Command.}
+\begin{lstlisting}[style=code,language=bash]
+python cs294-264-hw-FA25/run_agent.py --subset cs294 --split test \
+  -o results_final_improved --model gpt-5-mini --max-steps 100 \
+  --backtrack --optional-tools --guard-empty-diff --debug --use-default-instructor
+\end{lstlisting}
+
+\section*{Insights}
+\begin{itemize}
+  \item \textbf{Diff guard is high leverage:} simplest way to turn narrative progress into an evaluable patch; biggest reduction in errors.
+  \item \textbf{Structure-preserving edits matter:} re-indenting the replacement block avoids methods ``escaping'' classes—common LLM failure in Python.
+  \item \textbf{Syntax-first saves time:} cheap compile detects breakage earlier than tests, shortening loops.
+  \item \textbf{Scope beats breadth:} editing the smallest viable window improves correctness and reviewability.
+  \item \textbf{One-call protocol reduces parser friction:} fewer malformed calls and cleaner tool execution.
+\end{itemize}
+
+\section*{Spec-Compliance Checklist}
+\begin{itemize}
+  \item Message tree; context is root\,$\to$\,leaf path; nodes immutable except content.
+  \item System prompt: main content, auto tool docs/signatures, response format.
+  \item Text-only function call; parsing via \texttt{rfind}; no JSON/XML.
+  \item Required tools (baseline): \texttt{run\_bash\_cmd}, \texttt{finish}; optional tools gated in improved runs.
+  \item Step cap 100; LLM gpt-5-mini (medium reasoning).
+\end{itemize}
+
+\section*{Reproducibility}
+\begin{itemize}
+    \item Details: \texttt{SUBMISSION\_README.md} and \texttt{MANIFEST.md}.
+    \item Reports: baseline (\texttt{gpt-5-mini.baseline.json}), improved (\texttt{gpt-5-mini.final\_improved.json}).
+    \item Predictions: \texttt{results\_baseline/preds.json}, \texttt{results\_final\_improved/preds.json}.
+\end{itemize}
+\end{document}
