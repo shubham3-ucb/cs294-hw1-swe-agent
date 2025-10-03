@@ -1,0 +1,12 @@
+{
+  "info": {
+    "submission": "diff --git a/django/core/servers/basehttp.py b/django/core/servers/basehttp.py\nindex 14dab517c9..ad8c3b2999 100644\n--- a/django/core/servers/basehttp.py\n+++ b/django/core/servers/basehttp.py\n@@ -79,9 +79,11 @@ class WSGIServer(simple_server.WSGIServer):\n \n class ThreadedWSGIServer(socketserver.ThreadingMixIn, WSGIServer):\n     \"\"\"A threaded version of the WSGIServer\"\"\"\n-    daemon_threads = True\n-\n-\n+    # Wait for request threads to finish on shutdown to ensure database\n+    # connections used by request threads are closed before test teardown.\n+    # This avoids teardown races where the test database removal fails because\n+    # request threads holding connections are abruptly killed.\n+    daemon_threads = False\n class ServerHandler(simple_server.ServerHandler):\n     http_version = '1.1'\n \n",
+    "config": {
+      "agent": "swe-agent",
+      "model": "gpt-5-mini"
+    }
+  },
+  "messages": [],
+  "trajectory_format": "mini-swe-agent-1",
+  "instance_id": "django__django-14011"
+}

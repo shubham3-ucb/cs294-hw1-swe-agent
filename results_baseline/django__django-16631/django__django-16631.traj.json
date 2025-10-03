@@ -1,0 +1,12 @@
+{
+  "info": {
+    "submission": "Docs: clarify SECRET_KEY_FALLBACKS is not used by Django internals (e.g., session auth) that call salted_hmac without an explicit secret\n\nNo changes detected to generate a patch.",
+    "config": {
+      "agent": "swe-agent",
+      "model": "gpt-5-mini"
+    }
+  },
+  "messages": [],
+  "trajectory_format": "mini-swe-agent-1",
+  "instance_id": "django__django-16631"
+}

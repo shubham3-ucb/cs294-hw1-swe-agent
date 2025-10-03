@@ -1,0 +1,12 @@
+{
+  "info": {
+    "submission": "diff --git a/sphinx/ext/autodoc/mock.py b/sphinx/ext/autodoc/mock.py\nindex b562f47fd..ab8f3cc00 100644\n--- a/sphinx/ext/autodoc/mock.py\n+++ b/sphinx/ext/autodoc/mock.py\n@@ -72,13 +72,12 @@ class _MockObject:\n def _make_subclass(name: str, module: str, superclass: Any = _MockObject,\n                    attributes: Any = None, decorator_args: Tuple = ()) -> Any:\n     attrs = {'__module__': module,\n-             '__display_name__': module + '.' + name,\n+             '__display_name__': module + ('.' + name if name else ''),\n              '__sphinx_decorator_args__': decorator_args}\n     attrs.update(attributes or {})\n \n     return type(name, (superclass,), attrs)\n \n-\n class _MockModule(ModuleType):\n     \"\"\"Used by autodoc_mock_imports.\"\"\"\n     __file__ = os.devnull\n",
+    "config": {
+      "agent": "swe-agent",
+      "model": "gpt-5-mini"
+    }
+  },
+  "messages": [],
+  "trajectory_format": "mini-swe-agent-1",
+  "instance_id": "sphinx-doc__sphinx-9658"
+}

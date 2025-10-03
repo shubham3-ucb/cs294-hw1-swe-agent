@@ -1,0 +1,12 @@
+{
+  "info": {
+    "submission": "diff --git a/sympy/physics/units/unitsystem.py b/sympy/physics/units/unitsystem.py\nindex a436880c4b..00c38b6c20 100644\n--- a/sympy/physics/units/unitsystem.py\n+++ b/sympy/physics/units/unitsystem.py\n@@ -173,12 +173,16 @@ def _collect_factor_and_dimension(self, expr):\n         elif isinstance(expr, Add):\n             factor, dim = self._collect_factor_and_dimension(expr.args[0])\n             for addend in expr.args[1:]:\n-                addend_factor, addend_dim = \\\n-                    self._collect_factor_and_dimension(addend)\n-                if dim != addend_dim:\n+                addend_factor, addend_dim = self._collect_factor_and_dimension(addend)\n+                # Use the dimension system to determine equivalence of\n+                # dimensions. Two Dimension objects may differ syntactically\n+                # but represent equivalent dimensional dependencies (for\n+                # example acceleration*time and velocity). Relying on\n+                # direct object equality will incorrectly reject such cases.\n+                dimsys = self.get_dimension_system()\n+                if not dimsys.equivalent_dims(dim, addend_dim):\n                     raise ValueError(\n-                        'Dimension of \"{}\" is {}, '\n-                        'but it should be {}'.format(\n+                        'Dimension of \"{}\" is {}, but it should be {}'.format(\n                             addend, addend_dim, dim))\n                 factor += addend_factor\n             return factor, dim\n",
+    "config": {
+      "agent": "swe-agent",
+      "model": "gpt-5-mini"
+    }
+  },
+  "messages": [],
+  "trajectory_format": "mini-swe-agent-1",
+  "instance_id": "sympy__sympy-24213"
+}

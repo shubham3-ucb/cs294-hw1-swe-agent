@@ -1,0 +1,12 @@
+{
+  "info": {
+    "submission": "diff --git a/sphinx/ext/autodoc/mock.py b/sphinx/ext/autodoc/mock.py\nindex b562f47fd..699f5b498 100644\n--- a/sphinx/ext/autodoc/mock.py\n+++ b/sphinx/ext/autodoc/mock.py\n@@ -71,12 +71,30 @@ class _MockObject:\n \n def _make_subclass(name: str, module: str, superclass: Any = _MockObject,\n                    attributes: Any = None, decorator_args: Tuple = ()) -> Any:\n+    # Ensure the generated class has a non-empty name.  In some cases an\n+    # empty name was passed here which produced a display name ending with a\n+    # trailing dot (e.g. \"torch.nn.\") and led to incorrect \"Bases:\" output\n+    # in the rendered docs.  Fall back to the superclass name (or a sensible\n+    # default) when name is empty.\n+    if not name:\n+        fallback_name = getattr(superclass, '__name__', None) or '_MockObject'\n+        name_to_use = fallback_name\n+    else:\n+        name_to_use = name\n+\n+    # Build a sensible display name. If for some reason name_to_use is still\n+    # empty, don't leave a trailing dot.\n+    if name_to_use:\n+        display_name = module + '.' + name_to_use\n+    else:\n+        display_name = module\n+\n     attrs = {'__module__': module,\n-             '__display_name__': module + '.' + name,\n+             '__display_name__': display_name,\n              '__sphinx_decorator_args__': decorator_args}\n     attrs.update(attributes or {})\n \n-    return type(name, (superclass,), attrs)\n+    return type(name_to_use, (superclass,), attrs)\n \n \n class _MockModule(ModuleType):\n",
+    "config": {
+      "agent": "swe-agent",
+      "model": "gpt-5-mini"
+    }
+  },
+  "messages": [],
+  "trajectory_format": "mini-swe-agent-1",
+  "instance_id": "sphinx-doc__sphinx-9658"
+}

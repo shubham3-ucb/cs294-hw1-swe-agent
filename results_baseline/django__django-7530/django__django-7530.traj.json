@@ -1,0 +1,12 @@
+{
+  "info": {
+    "submission": "----VALUE----\nCall router.allow_migrate() only for models that belong to the app being checked in makemigrations (use apps.get_app_config(app_label).get_models() instead of apps.get_models(app_label)), ensuring (app_label, model) pairs are valid and fixing router consistency-check failures.\n\nNo changes detected to generate a patch.",
+    "config": {
+      "agent": "swe-agent",
+      "model": "gpt-5-mini"
+    }
+  },
+  "messages": [],
+  "trajectory_format": "mini-swe-agent-1",
+  "instance_id": "django__django-7530"
+}

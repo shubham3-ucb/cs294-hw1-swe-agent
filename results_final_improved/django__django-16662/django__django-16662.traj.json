@@ -1,0 +1,12 @@
+{
+  "info": {
+    "submission": "diff --git a/django/db/migrations/writer.py b/django/db/migrations/writer.py\nindex a59f0c8dcb..f6894a9f0a 100644\n--- a/django/db/migrations/writer.py\n+++ b/django/db/migrations/writer.py\n@@ -173,12 +173,15 @@ class MigrationWriter:\n         else:\n             imports.add(\"from django.db import migrations\")\n \n-        # Sort imports by the package / module to be imported (the part after\n+# Sort imports by the package / module to be imported (the part after\n         # \"from\" in \"from ... import ...\" or after \"import\" in \"import ...\").\n-        sorted_imports = sorted(imports, key=lambda i: i.split()[1])\n+        # Place plain \"import ...\" statements before \"from ... import ...\".\n+        sorted_imports = sorted(\n+            imports,\n+            key=lambda i: (0, i.split()[1]) if i.startswith(\"import \") else (1, i.split()[1]),\n+        )\n         items[\"imports\"] = \"\\n\".join(sorted_imports) + \"\\n\" if imports else \"\"\n-        if migration_imports:\n-            items[\"imports\"] += (\n+        if migration_imports:            items[\"imports\"] += (\n                 \"\\n\\n# Functions from the following migrations need manual \"\n                 \"copying.\\n# Move them and any dependencies into this file, \"\n                 \"then update the\\n# RunPython operations to refer to the local \"\n",
+    "config": {
+      "agent": "swe-agent",
+      "model": "gpt-5-mini"
+    }
+  },
+  "messages": [],
+  "trajectory_format": "mini-swe-agent-1",
+  "instance_id": "django__django-16662"
+}

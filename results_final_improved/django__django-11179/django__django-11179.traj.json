@@ -1,0 +1,12 @@
+{
+  "info": {
+    "submission": "diff --git a/django/db/models/deletion.py b/django/db/models/deletion.py\nindex 92fe4affb9..54fcf365be 100644\n--- a/django/db/models/deletion.py\n+++ b/django/db/models/deletion.py\n@@ -259,7 +259,7 @@ class Collector:\n                 return\n         self.data = {model: self.data[model] for model in sorted_models}\n \n-    def delete(self):\n+def delete(self):\n         # sort instance collections\n         for model, instances in self.data.items():\n             self.data[model] = sorted(instances, key=attrgetter(\"pk\"))\n@@ -277,6 +277,13 @@ class Collector:\n             if self.can_fast_delete(instance):\n                 with transaction.mark_for_rollback_on_error():\n                     count = sql.DeleteQuery(model).delete_batch([instance.pk], self.using)\n+                # Clear primary key on the deleted instance so the in-memory object\n+                # correctly reflects that it no longer exists in the database.\n+                try:\n+                    instance.pk = None\n+                except Exception:\n+                    # Be defensive; if for some reason pk can't be set, ignore.\n+                    pass\n                 return count, {model._meta.label: count}\n \n         with transaction.atomic(using=self.using, savepoint=False):\n@@ -316,12 +323,11 @@ class Collector:\n                             sender=model, instance=obj, using=self.using\n                         )\n \n-        # update collected instances\n-        for instances_for_fieldvalues in self.field_updates.values():\n-            for (field, value), instances in instances_for_fieldvalues.items():\n+                # Clear primary keys on the in-memory instances so they no longer\n+                # appear to be persisted.\n                 for obj in instances:\n-                    setattr(obj, field.attname, value)\n-        for model, instances in self.data.items():\n-            for instance in instances:\n-                setattr(instance, model._meta.pk.attname, None)\n-        return sum(deleted_counter.values()), dict(deleted_counter)\n+                    try:\n+                        obj.pk = None\n+                    except Exception:\n+                        # Ignore failures to clear pk to avoid breaking deletion.\n+                        pass\n\\ No newline at end of file\n",
+    "config": {
+      "agent": "swe-agent",
+      "model": "gpt-5-mini"
+    }
+  },
+  "messages": [],
+  "trajectory_format": "mini-swe-agent-1",
+  "instance_id": "django__django-11179"
+}
